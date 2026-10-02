@@ -1,311 +1,64 @@
-# vm2api
+# macvm2sub
 
-**macOS x64 fork:** 原生运行控制面，并通过官方 Codex CLI `app-server` 执行推理；安装、登录和 Codex CLI 客户端配置见 [macOS 说明](docs/MACOS.md)。分支：`feat/macos-x64-codex`。
+面向 macOS x64 的订阅转 API 服务，优先支持官方 Codex CLI。
 
-虚拟机拟真 + Claude Code。**0 提示词注入**。
+项目由 [Xboxpig](https://github.com/Xboxpig) 独立维护，继承自 [dofastted/vm2api](https://github.com/dofastted/vm2api)。保留上游 Git 提交历史、版权声明与 [原始许可证](LICENSE)；来源和适配范围见 [UPSTREAM.md](UPSTREAM.md)。
 
-[![Release](https://img.shields.io/github/v/release/dofastted/vm2api?display_name=tag)](https://github.com/dofastted/vm2api/releases)
-[![License](https://img.shields.io/badge/License-Noncommercial-yellow.svg)](LICENSE)
-[![Telegram](https://img.shields.io/badge/Telegram-@VM2API-blue?logo=telegram)](https://t.me/VM2API)
+## 当前能力
 
+- macOS 原生 Node.js 控制面，内部通过官方 `codex app-server` 执行推理。
+- `POST /v1/responses`，支持普通响应和 SSE 流式输出。
+- 每个槽位使用独立的 `CODEX_HOME`，支持浏览器 OAuth 回调与 device code 登录。
+- 支持客户端工具调用、工具结果回传和完整会话历史。
+- 管理控制台、账号调度与存储沿用上游实现。
 
-> **许可**：个人学习与非商用自建可用。**商用必须先取得书面授权**。联系 [Telegram @VM2API](https://t.me/VM2API)。全文见 [LICENSE](LICENSE)。
-
-💬 **加入讨论**：[Telegram @VM2API](https://t.me/VM2API)
-
-主路线图解：[技术路线](docs/技术路线.md) · 自建：[部署说明](docs/DEPLOY.md) · 打二进制：[版本构建](docs/BUILD.md)
----
-
-## 核心能力
-
-- 🧼 **0 提示词注入**：不再靠改 system / 注入人设去“像官方”。身份在凭证形态上就已经是 Console。
-- 🖥️ **Docker 或真虚拟机**：一槽一台机器。拟真物理机指纹仍在攻克，欢迎方案。
-- 📡 **全量遥测**：目标是 Claude 认为你是一台完全独立的电脑，并且无其余特征。
-- 🌐 **出口可选**：每槽一条远程 SOCKS5，或代理池「添加本地出口」。
-- 🎛️ **管理台**：`GET /console`。环境变量 admin 登录，没有用户管理页。
-- 🔌 **协议口**：`POST /v1/messages`（Anthropic），以及 Chat / Completions / Responses 兼容入口。
-
----
+已在 Intel macOS 15.7.8、Node.js 24.21.0、Codex CLI 0.160.0 上验证。登录后已实测 `gpt-6-sol` 的普通和流式请求；具体模型可用性以账号为准。
 
 ## 快速开始
 
-### 环境要求
+安装 Node.js 24+ 和官方 Codex CLI，然后：
 
-| 项 | 建议 |
-|---|---|
-| OS | Ubuntu 24.04（glibc 够新；Debian 12 上新内核常常起不来） |
-| 运行时 | Node 22、Docker、iptables |
-| 本机构建 | Rust stable、Go 1.25、pnpm 10 |
-| 网 | 每槽一条出口：远程 SOCKS5，或本地出口 |
-
-IPv6 地址的 SOCKS5 代理出口**默认关闭**，在管理台 **设置 → SOCKS5 → IPv6 代理出口** 开启。导入使用 `[2001:db8::1]:1080` 或 `socks5h://user:pass@[2001:db8::1]:1080`，不要使用含糊的裸 IPv6 `host:port`。关闭后不可探测、绑定或运行使用，但可继续导入、编辑、复制记录；已有槽位、绑定和探测历史保留，网络状态显示「IPv6 已关闭」而非代理故障。远端不可达时会提示出口未同步，并在节点恢复连接后重新应用关闭策略。此开关只针对 IPv6 literal 代理地址，不启用 Docker 网桥双栈，不改变 hostname 的 DNS 解析、DNS 或路由策略。
-
-### Docker Compose（推荐）
-
-生产就用这条。**拉预构建镜像，不在服务器上构建**；安装目录任意。
-
-**一键安装 / 更新**（保留已有非空 `.env` 字段 / `vms/` / `data/`，不 `docker rm` 槽）。空密码默认 **`admin` / `123456`**，登录 `http://<ip>:8787/cc#/login`。
-
-```bash
-curl -sSL https://raw.githubusercontent.com/dofastted/vm2api/main/deploy/install.sh | sudo bash
-# 以后更新
-curl -sSL https://raw.githubusercontent.com/dofastted/vm2api/main/deploy/install.sh | sudo bash -s -- upgrade
-sudo bash /opt/vm2api/deploy/install.sh check
+```sh
+git clone https://github.com/Xboxpig/macvm2sub.git
+cd macvm2sub
+npm ci --ignore-scripts
+npm run setup:macos
+npm run login:codex
+npm run start:macos
 ```
 
-管理台 **设置 → 关于** 会对照 GitHub Release，并给出同一条命令。
+`login:codex` 默认使用浏览器 OAuth 登录。需要 device code 登录时执行：
 
-**运行形态（不是一个父容器里一堆子进程）：**
-
-- Compose **只起 1 个** `vm2api` 控制面（面板、`/v1`、调度）
-- 每个**已启动**的槽另起 1 个宿主机容器 `kin-<槽>`（独立家目录 / 出口 / 指纹 / 遥测）
-- 未启动的槽不占容器。`docker ps` 里其它名字是同机别的项目，不是 vm2api
-
-```bash
-mkdir -p /opt/vm2api && cd /opt/vm2api
-curl -sSLO https://raw.githubusercontent.com/dofastted/vm2api/main/docker-compose.yml
-curl -sSL -o .env https://raw.githubusercontent.com/dofastted/vm2api/main/.env.example
-chmod 600 .env
-# 空密码默认 admin / 123456；空 API key / DB secret 由入口生成
-
-docker compose pull && docker compose up -d
-curl -sS --noproxy '*' http://127.0.0.1:8787/health
+```sh
+npm run login:codex -- --device-auth
 ```
 
-镜像自带 `bin/kin-{kernel,egress,worker,codex-kernel,cookie-auth}` 与 `share/wrap-cli`，入口写进挂载目录，**服务器上不编 Rust/Go/前端**。槽位 OS 镜像先 `docker pull ghcr.io/dofastted/kin-os-*`，拉不到时建槽阶段兜底构建。槽 UID 是 `10000+序号`，`bin/kin-*` 必须 **755**。
+- API：`http://127.0.0.1:8787/v1`
+- 控制台：`http://127.0.0.1:8787/console`
+- 健康检查：`http://127.0.0.1:8787/health`
+- API key、管理员密码及数据库密钥：初始化生成在 `.env.macos`。
 
-改代码自己构建：`docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build`（一键脚本用 `--from-source`）。
+远程浏览器回调、Codex CLI 客户端配置和代理设置见 [macOS 部署说明](docs/MACOS.md)。
 
+## 适配范围
 
+当前原生适配覆盖 Codex 路径。Claude 槽位和 Linux 容器运行时仍使用上游部署方式。
 
-Docker Desktop（含 WSL2）的 host 网络在 Desktop Linux VM 里，WSL/macOS 的 `127.0.0.1:8787` 可能连不上。改用：
+CLI backend 每次请求使用完整会话历史，暂不支持 `previous_response_id`、Responses WebSocket 和 `/v1/responses/compact`。管理台原有 OAuth 导入入口尚未接入 CLI 登录，请使用 `npm run login:codex`。官方 CLI 会进行自身的指令和上下文处理。
 
-```bash
-docker exec vm2api python3 -c 'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8787/health").read().decode())'
+## 验证
+
+```sh
+node --test test/unit/codex-cli.test.mjs
+VM2API_TEST_CODEX_CLI=1 node --test test/e2e/codex-cli-native.e2e.test.mjs
 ```
 
-生产请用 **Ubuntu 24.04 + Docker Engine**。完整约束：[DEPLOY.md · Docker](docs/DEPLOY.md#docker-compose)。
+集成测试使用真实官方 CLI 和本地 fixture provider，覆盖流式响应、工具调用、结果回传以及 Codex CLI 客户端经由服务完成工具循环。
 
+## 来源与许可
 
-### 本机 Node
+- 上游：[dofastted/vm2api](https://github.com/dofastted/vm2api)
+- 来源说明：[UPSTREAM.md](UPSTREAM.md)
+- 许可证：[LICENSE](LICENSE)
 
-1. **克隆并安装**
-
-   ```bash
-   git clone https://github.com/dofastted/vm2api.git /opt/vm2api
-   cd /opt/vm2api
-   npm ci
-   pnpm -C web install --frozen-lockfile
-   npm run build:web
-   ```
-
-   内核 / 网关：仓内 `bin/kin-*` 已是 linux amd64。也可本机重编或从 [Release](https://github.com/dofastted/vm2api/releases) 覆盖。
-
-2. **写环境变量和占位槽**
-
-   ```bash
-   cp docs/deploy/env.example /etc/vm2api.env
-   chmod 600 /etc/vm2api.env
-   # 必填：VM2API_API_KEY / VM2API_ADMIN_PASSWORD / VM2API_DB_SECRET
-   # 自建请把 KIN_*_BIN 指到 /opt/vm2api/bin/
-
-   mkdir -p vms data bin
-   printf '%s\n' '{ "active_vm": "vm-01" }' > vms/active.json
-   ```
-
-   还要有 `vms/vm-01.json`，抄本见 [部署说明](docs/DEPLOY.md#第一次落地)。没有 `vms/active.json` 进程会退出。
-
-3. **启动**
-
-   ```bash
-   set -a && source /etc/vm2api.env && set +a
-   node src/server.mjs
-   ```
-
-   生产用 systemd：[docs/deploy/vm2api.service](docs/deploy/vm2api.service)。
-
-### 访问
-
-启动成功后：
-
-| 入口 | 地址 |
-|---|---|
-| 探活 | `http://127.0.0.1:8787/health` |
-| 管理台 | `http://127.0.0.1:8787/console`（`VM2API_ADMIN_PASSWORD`） |
-| 协议 | `POST /v1/messages`（master key 或 `sk-vm-…`） |
-
-上线后：代理池绑出口 → 建 Claude 槽 → 导入 Setup Token → 官方初装 → 再打 `/v1`。完整步骤：[DEPLOY.md](docs/DEPLOY.md)。
-
-```bash
-curl -sS http://127.0.0.1:8787/v1/messages \
-  -H "Authorization: Bearer $VM2API_API_KEY" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-sonnet-5","max_tokens":128000,"messages":[{"role":"user","content":"hello"}]}'
-```
-
----
-
-## 技术路线
-
-```text
-用户请求
-  → 协议清洗
-  → POST /v1/messages
-  → 接入 Claude Code 
-  → TCP 转发
-  → endpoint
-  → 透明转发给用户
-```
-
-![Docker / 真虚拟机、物理指纹、20 路原生 subagent](docs/images/vm2api-03-vm-subagent.png)
-
-- 槽位可以是 **Docker**，也可以是 **真虚拟机**
-- 槽内 **Claude Code 原生 subagent**，最大 **20** 并发
-- **拟真物理机指纹** 仍在攻克。欢迎开 Issue / PR
-
-![全量遥测，独立电脑，无其余特征](docs/images/vm2api-04-telemetry.png)
-
-遥测全量发送。一槽一台机器。身份、遥测、指纹都按单机收敛。
-
-展开说明：[docs/技术路线.md](docs/技术路线.md)
-
----
-
-## 架构
-
-```text
-客户端 / Claude Code / 兼容 SDK
-        │  Bearer / x-api-key
-        ▼
-Node 控制面  :8787
-  协议清洗 · 调度 · 管理台 /console
-        │  cli-hop
-        ▼
-槽（Docker 或真虚拟机）
-  Rust 内核 + Claude Code 原生 subagent（≤20）
-        │  SOCKS5 或本地出口
-        ▼
-Console API endpoint  →  原样回传给调用方
-```
-
-| 目录 | 做什么 |
-|---|---|
-| `src/config/routing.json` | 控制面开关。设置页只写这里 |
-| `vms/<id>/run/kernel.json` | 槽内 kernel 热读副本。只投影人设、`system_layout`、缓存 TTL、时区 |
-| `src/` | Node 控制面、`/v1`、面板 API |
-| `web/` | Vite 管理台，构建后 `GET /console` |
-| `bin/kin-kernel` | Claude Code 槽内核（预编译 ELF） |
-| `worker/cmd/kin-egress` | 远程 SOCKS5 透明网关 |
-| `worker/cmd/kin-worker` | **只** telemetry，不是推理 hop |
-| `docs/` | 路线、部署、构建、契约 |
-
-kernel / wrap 只带预编译 ELF。不要提交凭证。
-
----
-
-## 部署与配置
-
-生产推荐：仓库放到 `/opt/vm2api`，写 `.env`，`docker compose up -d --build`。前面可以 nginx 反代 `/v1` `/api` `/console` `/health`。本机 Node + systemd 是备选，见 [DEPLOY.md](docs/DEPLOY.md#第一次落地本机-node)。
-
-最少三项，缺 `VM2API_API_KEY` 或面板密码进程起不来：
-
-```bash
-VM2API_API_KEY=         # master key，/v1 + 面板 + /admin
-VM2API_ADMIN_PASSWORD=  # 管理台登录
-VM2API_DB_SECRET=       # 库加密
-```
-
-`VM2API_*` 优先，没有再读 `KIN_*`。完整表和 nginx 抄本：[DEPLOY.md](docs/DEPLOY.md) · [env.example](docs/deploy/env.example)
-
----
-
-## 版本与构建
-
-当前发布：**v1.3.14**
-
-```bash
-git tag -a v1.3.14 -m "vm2api v1.3.14"
-git push origin v1.3.14
-```
-
-`v*` tag 会触发 [Release 工作流](.github/workflows/release.yml)，再挂一份 linux amd64 ELF。仓内 `bin/` 已可直接部署。步骤：[BUILD.md](docs/BUILD.md)
-
-
----
-
-## 文档
-
-| 文档 | 内容 |
-|---|---|
-| [技术路线](docs/技术路线.md) | 产品主路线（图） |
-| [DEPLOY.md](docs/DEPLOY.md) | Docker Compose（推荐）、环境变量、占位槽、systemd、反代 |
-| [BUILD.md](docs/BUILD.md) | 本机构建、Release、升级 |
-| [API.md](docs/API.md) | `/v1` 客户端契约 |
-| [PROTOCOL.md](docs/PROTOCOL.md) | 协议行为 |
-| [PANEL_API.md](docs/PANEL_API.md) | 管理台 API |
-| [OAUTH.md](docs/OAUTH.md) | 导入与换票（主凭证是 Setup Token） |
-| [CHANGELOG.md](CHANGELOG.md) | 版本记录 |
-
----
-
-## FAQ
-
-1. **进程立刻退出，提示 `VM2API_API_KEY not set` 或读不到 JSON？**  
-   Compose 写仓库 `.env`；本机 Node 写 `/etc/vm2api.env`，再准备 `vms/active.json`。抄本在 [DEPLOY.md](docs/DEPLOY.md#第一次落地本机-node)。
-
-2. **`/console` 是空白或 404？**  
-   Compose 镜像里已带 `web/dist`。本机 Node 先 `npm run build:web`。静态页更新不必重启 Node。
-
-3. **槽建好了但不调度？**  
-   先绑出口（远程 SOCKS5 或管理台 **添加本地出口**），再导入 Setup Token。没凭证是 `no_credential`，不会入池。
-
-4. **Debian 12 上内核起不来？**  
-   优先 Ubuntu 24.04。过旧的 glibc 跑不了当前 wrap / Claude kernel。
-
-5. **还要不要跑 Go hop / `kin-worker` 当推理？**  
-   不要。hop 服务端已删除。`kin-worker` 不带参数会退出，只接受 `telemetry`。
-
-6. **密钥写进 git 了怎么办？**  
-   立刻轮换 `VM2API_*`、Setup Token、面板密码。不要把密钥贴到 Issue。
-
-7. **Compose 起来了但建不了槽 / `egress network missing`？**  
-   `bin/kin-*` 为 **755**、挂了 `docker.sock`、控制面容器名与 `VM2API_CONTAINER_NAME` 一致（自省宿主路径用）。先添加本地出口再启动槽——首次启动会自动补一个本机出口 `px-local`。
-
-8. **`exec: "/usr/local/bin/kin-kernel": permission denied`？**  
-   `chmod 755 bin/kin-kernel bin/kin-egress bin/kin-worker bin/kin-codex-kernel`。不要用 `700`。
-
-9. **本机 `curl 127.0.0.1:8787` 失败，容器却是 healthy？**  
-   Docker Desktop 的 `network_mode: host` 不在 WSL/macOS localhost。用 `docker exec vm2api …` 探活，或改 Ubuntu + Docker Engine。
-
-10. **`docker ps` 怎么这么多容器？**  
-    vm2api 只要 `vm2api` + 每个已启动槽一个 `kin-*`。postgres / newapi / hermes 等同机其它栈，不是本项目子进程。不能把多槽塞进一个容器当多进程，否则指纹/遥测糊成一台。
-
-
----
-
-## 交流与支持
-
-Telegram 群组：[t.me/VM2API](https://t.me/VM2API)（`@VM2API`）
-
-开源维护需要时间。扫码进群或支持一下，谢谢。
-
-<img src="docs/images/tg-vm2api.jpg" alt="Telegram @VM2API" width="220" />
-<img src="docs/images/support-wechat.png" alt="支持收款码" width="220" />
-
-感谢 liunx do 论坛支持。
-
-欢迎 Issue / PR。提交前请勿带上 `.env`、槽 JSON 里的票、或 Release 二进制。
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=dofastted/vm2api&type=Date)](https://star-history.com/#dofastted/vm2api&Date)
-
-## 许可证
-
-开源版仅覆盖个人学习、研究与非商用自建，须保留 [LICENSE](LICENSE) 全文。
-
-**商用必须先取得书面授权**（对外收费、作为付费服务、公司生产营收、收费再分发等）。未授权商用禁止。申请：[Telegram @VM2API](https://t.me/VM2API)。
-
-vm2api 不是 Anthropic 官方项目，与其无关联。Claude、Claude Code、Anthropic 等均为其权利人的商标。
+个人学习、研究与非商用自建遵循上游许可证；商用须先取得版权所有者的书面授权。独立维护不会改变原始代码的许可条款。

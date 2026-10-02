@@ -1,7 +1,7 @@
 {
-  "name": "vm2api",
+  "name": "macvm2sub",
   "private": true,
-  "description": "VM-fidelity subscription-to-API gateway",
+  "description": "Native macOS subscription-to-API gateway using the official Codex CLI, derived from vm2api",
   "type": "module",
   "main": "src/server.mjs",
   "scripts": {

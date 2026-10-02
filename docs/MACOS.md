@@ -1,9 +1,10 @@
 # macOS x64 / official Codex CLI
 
-This fork adds a native Codex backend for macOS. The inference path is:
+macvm2sub derives from vm2api and adds a native Codex backend for macOS.
+See [UPSTREAM.md](../UPSTREAM.md) for provenance. The inference path is:
 
 ```text
-Codex CLI or Responses client → vm2api /v1/responses
+Codex CLI or Responses client → macvm2sub /v1/responses
   → official codex app-server (stdio) → configured Codex provider
 ```
 
@@ -18,11 +19,11 @@ Use Node.js 24+ and put `codex` on PATH. The app-server API is experimental;
 0.160.0 is the tested CLI version (`npm install -g @openai/codex@0.160.0`).
 
 ```sh
-git clone --branch feat/macos-x64-codex https://github.com/Xboxpig/vm2api.git
-cd vm2api
+git clone https://github.com/Xboxpig/macvm2sub.git
+cd macvm2sub
 npm ci --ignore-scripts
 npm run setup:macos
-npm run login:codex -- --device-auth
+npm run login:codex
 npm run start:macos
 ```
 
@@ -36,6 +37,12 @@ Login uses the official CLI in that slot's `CODEX_HOME`. It does not modify
 `~/.codex`. `npm run status:codex` checks authentication through app-server and
 updates the slot's scheduling credential flag. Use this after logging out or
 changing the slot's CLI authentication outside the launcher.
+
+The default login opens the browser OAuth flow and receives the localhost
+callback on port 1455. When the CLI runs on a remote Mac, forward that port from
+the browser machine with `ssh -L 1455:localhost:1455 user@your-mac`, then run
+`npm run login:codex` in the SSH session and open the printed URL locally.
+Device code login is available with `npm run login:codex -- --device-auth`.
 
 Check `http://127.0.0.1:8787/health`; the bundled console is at `/console`.
 Read the generated credentials locally from `.env.macos`. For remote access,
@@ -109,6 +116,11 @@ history, the gateway HTTP endpoint, and an official Codex CLI client completing
 a command/tool-result cycle through the gateway. It needs no login or paid API.
 It does not establish that a particular ChatGPT subscription can complete live
 requests; verify that after official CLI login.
+
+A live authenticated check on 2026-10-02 also completed ordinary and SSE
+`/v1/responses` requests with `gpt-6-sol`. The inherited `/v1/models` catalogue
+contains preset entries; it is not a guarantee that the logged-in account can
+use every listed model.
 
 The upstream unit suite contains Linux/Docker assumptions. In the supplied macOS
 environment, seven pre-existing failures reproduce in the unchanged upstream
