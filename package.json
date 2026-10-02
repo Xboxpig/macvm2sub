@@ -5,6 +5,10 @@
   "type": "module",
   "main": "src/server.mjs",
   "scripts": {
+    "setup:macos": "node scripts/macos.mjs init",
+    "login:codex": "node scripts/macos.mjs login",
+    "status:codex": "node scripts/macos.mjs status",
+    "start:macos": "node scripts/macos.mjs start",
     "start": "node src/server.mjs",
     "test": "npm run test:unit && npm run test:go",
     "test:unit": "node scripts/run-isolated-tests.mjs test/unit .test.mjs",

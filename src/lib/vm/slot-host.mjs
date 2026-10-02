@@ -52,6 +52,7 @@ import { destroyVmRuntime, officialCcUidGid, reloadSlotWorker, startVmRuntime, s
 import { ensureProxyEgress, inspectEgressProcess, stopEgressProcess } from './egress.mjs'
 import { isCodexVm } from './vm-kind.mjs'
 import { stopCodexKernel } from '../transport/codex-kernel-supervisor.mjs'
+import { useCodexCli, stopAllCodexCli } from '../transport/codex-cli.mjs'
 
 const noop = async () => ({ skipped: true })
 
@@ -134,5 +135,20 @@ function nodeHost(nodeId) {
 
 export function slotHost(vm) {
   const nodeId = vmNodeId(vm)
+  if (!nodeId && isCodexVm(vm) && useCodexCli()) {
+    const stop = () => {
+      stopAllCodexCli(vm.id)
+      return { ok: true, runtime: { codex_cli: true } }
+    }
+    return {
+      ...LOCAL_HOST,
+      supports: (cap) => cap === 'codex',
+      start: () => ({ ok: true, runtime: { codex_cli: true } }),
+      reload: stop,
+      stop,
+      destroy: stop,
+      setProxyEgressEnabled: (_vm, _root, enabled) => (enabled ? { ok: true } : stop()),
+    }
+  }
   return nodeId ? nodeHost(nodeId) : LOCAL_HOST
 }

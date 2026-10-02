@@ -1,5 +1,7 @@
 # vm2api
 
+**macOS x64 fork:** 原生运行控制面，并通过官方 Codex CLI `app-server` 执行推理；安装、登录和 Codex CLI 客户端配置见 [macOS 说明](docs/MACOS.md)。分支：`feat/macos-x64-codex`。
+
 虚拟机拟真 + Claude Code。**0 提示词注入**。
 
 [![Release](https://img.shields.io/github/v/release/dofastted/vm2api?display_name=tag)](https://github.com/dofastted/vm2api/releases)

@@ -3,6 +3,7 @@
  * go-worker-client, socket is run/codex-kernel.sock.
  */
 import path from 'node:path'
+import { useCodexCli, codexCliHealth, streamCodexCli } from './codex-cli.mjs'
 import { callGoWorker, streamGoWorker, workerHealth, workerPaths } from './go-worker-client.mjs'
 
 export function codexKernelPaths(exec = {}) {
@@ -42,6 +43,7 @@ function remapVia(result) {
 }
 
 export async function callCodexKernel(opts = {}) {
+  if (useCodexCli()) return streamCodexCli(opts)
   return remapVia(
     await callGoWorker({
       ...opts,
@@ -52,6 +54,7 @@ export async function callCodexKernel(opts = {}) {
 }
 
 export async function streamCodexKernel(opts = {}) {
+  if (useCodexCli()) return streamCodexCli(opts)
   return remapVia(
     await streamGoWorker({
       ...opts,
@@ -62,6 +65,7 @@ export async function streamCodexKernel(opts = {}) {
 }
 
 export async function codexKernelHealth(exec, opts = {}) {
+  if (useCodexCli()) return codexCliHealth(exec)
   const health = await workerHealth(withCodexKernelExec(exec), opts)
   if (health?.source) {
     return { ...health, source: String(health.source).replace(/go-worker/g, 'codex-kernel') }

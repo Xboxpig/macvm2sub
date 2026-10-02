@@ -84,6 +84,7 @@ import {
 import { normalizeCredentialMode } from './lib/oauth/credential-mode.mjs'
 import { ensureWorkerCredential } from './lib/transport/go-worker-client.mjs'
 import { stopAllRustKernels } from './lib/transport/rust-kernel-supervisor.mjs'
+import { stopAllCodexCli } from './lib/transport/codex-cli.mjs'
 import { createRespond } from './lib/http/respond.mjs'
 import { tryServeWebDist } from './lib/http/web-dist.mjs'
 import { createRoutingRuntime } from './lib/admin/routing-runtime.mjs'
@@ -1116,6 +1117,7 @@ function shutdown(signal) {
   } catch {}
   try {
     stopAllRustKernels()
+    stopAllCodexCli()
   } catch {}
   try {
     clusterManager.stop()

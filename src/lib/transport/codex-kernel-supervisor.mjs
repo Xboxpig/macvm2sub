@@ -9,6 +9,7 @@ import path from 'node:path'
 import { boundProxyUrl, isLocalEgressProxy, localEgressProxyUrl } from '../vm/egress.mjs'
 import { assertProxyAllowed } from '../vm/proxy-policy.mjs'
 import { codexKernelHealth, codexKernelPaths } from './codex-kernel-client.mjs'
+import { useCodexCli, stopAllCodexCli } from './codex-cli.mjs'
 
 const starts = new Map()
 
@@ -81,6 +82,8 @@ export function writeCodexKernelConfig(projectRoot, vm, { token, proxyUrl, proxy
 }
 
 export async function ensureCodexKernel(exec, { timeoutMs = 8000 } = {}) {
+  // The official app-server is started per request; it owns authentication.
+  if (useCodexCli()) return { ok: true, backend: 'codex-cli' }
   const bin = codexKernelBinPath()
   if (!bin) return { ok: false, reason: 'bin_missing' }
   const paths = codexKernelPaths(exec)
@@ -118,6 +121,7 @@ async function waitForHealth(exec, timeoutMs) {
 }
 
 export function stopCodexKernel(vmId) {
+  if (useCodexCli()) stopAllCodexCli(vmId)
   const child = starts.get(vmId)
   if (child) {
     try {
