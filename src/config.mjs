@@ -15,9 +15,10 @@ export function configuration(env = process.env) {
     codexBin: env.MACVM2SUB_CODEX_BIN || env.KIN_CODEX_CLI_BIN || 'codex',
     pythonBin: env.MACVM2SUB_PYTHON_BIN || '/usr/bin/python3',
     model: saved.model || env.MACVM2SUB_MODEL || 'gpt-5.6-luna',
-    turnTimeoutMs: bounded(env.MACVM2SUB_TURN_TIMEOUT_MS, 180000, 1000, 900000),
-    sessionTtlMs: bounded(env.MACVM2SUB_SESSION_TTL_MS, 900000, 60000, 86400000),
-    maxSessions: bounded(env.MACVM2SUB_MAX_SESSIONS, 4, 1, 16),
+    turnTimeoutMs: bounded(saved.turnTimeoutMs ?? env.MACVM2SUB_TURN_TIMEOUT_MS, 180000, 1000, 900000),
+    sessionTtlMs: bounded(saved.sessionTtlMs ?? env.MACVM2SUB_SESSION_TTL_MS, 900000, 60000, 86400000),
+    maxSessions: bounded(saved.maxSessions ?? env.MACVM2SUB_MAX_SESSIONS, 4, 1, 16),
+    historyLimit: bounded(saved.historyLimit ?? env.MACVM2SUB_HISTORY_LIMIT, 10000, 500, 50000),
     upstream: 'https://chatgpt.com',
     apiKey: env.MACVM2SUB_API_KEY || env.VM2API_API_KEY,
     adminUser: env.MACVM2SUB_ADMIN_USER || env.VM2API_ADMIN_USER || 'admin',
@@ -27,8 +28,16 @@ export function configuration(env = process.env) {
 }
 
 export function saveSettings(config, input) {
-  if (typeof input.model !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(input.model)) throw new Error('Invalid model identifier')
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Expected settings object')
+  const next = Object.fromEntries(['model', 'turnTimeoutMs', 'sessionTtlMs', 'maxSessions', 'historyLimit'].map(key => [key, config[key]]))
+  const limits = { turnTimeoutMs: [1000, 900000], sessionTtlMs: [60000, 86400000], maxSessions: [1, 16], historyLimit: [500, 50000] }
+  for (const [key, value] of Object.entries(input)) {
+    if (!Object.hasOwn(next, key)) throw new Error(`Unsupported setting: ${key}`)
+    if (key === 'model') { if (typeof value !== 'string' || !/^[a-zA-Z0-9._-]{1,100}$/.test(value)) throw new Error('Invalid model identifier') }
+    else { const [min, max] = limits[key]; if (!Number.isInteger(value) || value < min || value > max) throw new Error(`${key} must be an integer between ${min} and ${max}`) }
+    next[key] = value
+  }
   const file = path.join(config.dataDir, 'settings.json')
-  fs.writeFileSync(file + '.tmp', JSON.stringify({ model: input.model }) + '\n', { mode: 0o600 })
-  fs.renameSync(file + '.tmp', file); config.model = input.model
+  fs.writeFileSync(file + '.tmp', JSON.stringify(next) + '\n', { mode: 0o600 })
+  fs.renameSync(file + '.tmp', file); Object.assign(config, next)
 }

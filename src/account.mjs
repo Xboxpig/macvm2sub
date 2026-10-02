@@ -29,7 +29,7 @@ export class Account {
   login(mode) {
     if (this.child) throw fault('A login is already in progress', 409)
     if (!['browser', 'device'].includes(mode)) throw fault('Invalid login mode')
-    this.loginState = { running: true, message: mode === 'browser' ? '完成授权后可提交浏览器回调 URL。' : '输入验证码完成设备授权。' }
+    this.loginState = { running: true, mode, message: mode === 'browser' ? '完成授权后可提交浏览器回调 URL。' : '输入验证码完成设备授权。' }
     const child = spawn(this.config.codexBin, ['login', ...(mode === 'device' ? ['--device-auth'] : [])], { env: this.env(), stdio: ['ignore', 'pipe', 'pipe'] })
     this.child = child
     let text = ''
@@ -41,9 +41,13 @@ export class Account {
     }
     child.stdout.on('data', collect); child.stderr.on('data', collect)
     const timer = setTimeout(() => child.kill(), 600000)
+    let finished = false
     const finish = code => {
+      if (finished) return
+      finished = true
       clearTimeout(timer); this.child = null; this.checked = 0
-      this.loginState = { running: false, message: code === 0 ? '登录完成' : '登录未完成，请重新尝试或使用设备验证。' }
+      const cancelled = this.loginState.result === 'cancelled'
+      this.loginState = { running: false, mode, result: cancelled ? 'cancelled' : code === 0 ? 'success' : 'error', message: cancelled ? '登录已取消' : code === 0 ? '登录完成' : '登录未完成，请重新尝试或使用设备验证。' }
     }
     child.once('error', () => finish(1)); child.once('exit', finish)
     return this.loginState
@@ -64,5 +68,6 @@ export class Account {
       return (cached.models || []).filter(m => m.slug && m.visibility !== 'hide').map(m => ({ id: m.slug, object: 'model', created: 0, owned_by: 'openai' }))
     } catch { return [{ id: this.config.model, object: 'model', created: 0, owned_by: 'openai' }] }
   }
+  cancel() { if (this.child) { this.loginState.result = 'cancelled'; this.child.kill() } }
   close() { this.child?.kill() }
 }

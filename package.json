@@ -11,7 +11,7 @@
     "status:codex": "node scripts/macos.mjs status",
     "start:macos": "node scripts/macos.mjs start",
     "start": "node --env-file-if-exists=.env.macos src/server.mjs",
-    "test": "node --test test/tui/*.test.mjs test/server.test.mjs",
+    "test": "node --test test/tui/*.test.mjs test/*.test.mjs",
     "test:native": "node scripts/test-native.mjs",
     "build:web": "npm --prefix console run build"
   },

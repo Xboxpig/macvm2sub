@@ -79,9 +79,36 @@ after restart, use the last `previous_response_id`. Session expiration is explic
 
 ## Imported code
 
-- CPA-Manager-Plus: React UI primitives and theme sources, adapted application pages.
+- CPA-Manager-Plus: complete analytics page and chart presentation, configuration
+  editor/diff controls, OAuth card layout, React primitives and theme sources.
 - Jinn: transcript tailer and Codex turn marker parser; warm-process lifecycle and
   `resume` informed the gateway lifecycle. Its Claude request classifier was not
   copied because Codex also sends main requests with no top-level tools.
 
 See [UPSTREAM.md](../UPSTREAM.md) for pinned commits and retained licenses.
+
+## Console data adapter
+
+The console uses cookie-authenticated `/api/status`, `/api/models`,
+`/api/settings`, `/api/analytics` and `/api/account/*`. API bearer keys are never
+included in the analytics response or browser state. The single key and credential
+use display identifiers `gateway` and `codex`.
+
+Analytics maps retained gateway request metadata to the CPA schema, including
+time/model/status/cache/latency filters, timezone-aware buckets, cache/reasoning
+tokens, model and credential rankings, heatmaps, prior-period comparison and
+paginated request drilldown. A bucket with at least five requests and at least
+20% failures is marked anomalous (50% is high severity). Cost is unpriced and
+shown as `—`; latency is gateway request duration, and TTFT is unavailable.
+No prompts, tool arguments, tool results or OAuth tokens are recorded here.
+
+History defaults to 10,000 records (configurable 500–50,000). Lifetime totals
+survive record eviction; the analytics coverage field marks incomplete ranges.
+Existing historical records contain only previously collected fields, so missing
+cache/reasoning counts default to zero. Changing retention cannot recover records
+already discarded by older versions.
+
+Settings are validated and written atomically before updating the running config.
+Default model affects new sessions; timeouts apply to subsequent turns, while
+session limits and idle TTL affect subsequent lifecycle checks. Browser OAuth,
+device login, callback forwarding and cancellation are owned by the official CLI.

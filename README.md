@@ -2,7 +2,7 @@
 
 在 macOS x64 上运行的单账号 Codex API gateway，独立维护并继承 [vm2api](https://github.com/dofastted/vm2api)。
 
-网关启动官方 Codex TUI，用 PTY 提交 prompt，在本机代理中同步转发并读取原生 HTTP/WS 响应。一个客户端会话对应一个持久 TUI；默认同时进行一次推理。控制台使用 CPA-Manager-Plus 的 React 组件和主题，提供概览、请求记录、Codex 登录和模型设置。
+网关启动官方 Codex TUI，用 PTY 提交 prompt，在本机代理中同步转发并读取原生 HTTP/WS 响应。一个客户端会话对应一个持久 TUI；默认同时进行一次推理。控制台移植 CPA-Manager-Plus 的统计页面、设置编辑器和 Codex OAuth 面板，保留上游组件、图表与主题。
 
 ## 启动
 
@@ -20,6 +20,8 @@ npm run start:macos
 初始化把随机 API key 和控制台密码写入权限为 `0600` 的 `.env.macos`。控制台：`http://127.0.0.1:8787/console/`。部署前按需修改 `HOST`；环境变量见 [.env.example](.env.example)。已有部署的 `VM2API_API_KEY`、`VM2API_ADMIN_USER`、`VM2API_ADMIN_PASSWORD` 和 `KIN_CODEX_CLI_BIN` 可继续使用。
 
 `MACVM2SUB_CODEX_HOME` 可指向已经 OAuth 登录的 Codex home。认证和 token 刷新由官方 CLI 完成。控制台支持发起浏览器 OAuth、设备验证码登录，以及提交远程浏览器无法访问的 `localhost:1455/auth/callback` URL。
+
+控制台的「使用统计」提供总览、趋势、模型、客户端 Key、凭证和热力图六个分区，支持时间、状态、模型、延迟与缓存筛选，并可跳转到分页请求明细。统计基于保留的请求记录；费用显示为 `—`，不推算订阅账单。「配置管理」支持可视化与 JSON 编辑、保存前差异确认，可调整默认模型、会话上限、空闲 TTL、请求超时和记录保留数量。设置保存在 `data/settings.json`，优先于相应环境变量。
 
 ## API 与会话
 
@@ -44,6 +46,7 @@ npm run start:macos
 
 ```sh
 npm test
+npm --prefix console test # 组件交互和统计数据适配测试
 npm run test:native     # macOS 上的真实 TUI + 本地 fixture，不调用付费上游
 npm run build:web
 node scripts/launchd.mjs # 生成开机服务配置并打印安装命令

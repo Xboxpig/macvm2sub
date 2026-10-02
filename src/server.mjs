@@ -11,6 +11,7 @@ import { Sessions } from './tui/session.mjs'
 import { readBody } from './tui/relay.mjs'
 import { fault } from './tui/protocol.mjs'
 import { attachWebSocket } from './websocket.mjs'
+import { analytics } from './analytics.mjs'
 
 export async function createGateway(config, dependencies = {}) {
   const auth = new Auth(config), sessions = dependencies.sessions || new Sessions(config), account = dependencies.account || new Account(config), history = new History(config)
@@ -18,7 +19,7 @@ export async function createGateway(config, dependencies = {}) {
     const started = Date.now(), entry = { id: randomUUID(), time: started, model: body.model || config.model, inputTokens: 0, outputTokens: 0 }
     try {
       const response = await sessions.run(body, emit, signal)
-      history.add({ ...entry, model: response.model, status: 200, durationMs: Date.now() - started, inputTokens: response.usage?.input_tokens || 0, outputTokens: response.usage?.output_tokens || 0 })
+      history.add({ ...entry, model: response.model, status: 200, durationMs: Date.now() - started, inputTokens: response.usage?.input_tokens || 0, outputTokens: response.usage?.output_tokens || 0, cachedTokens: response.usage?.input_tokens_details?.cached_tokens || 0, reasoningTokens: response.usage?.output_tokens_details?.reasoning_tokens || 0 })
       return response
     } catch (error) {
       history.add({ ...entry, status: error.status || 502, durationMs: Date.now() - started, error: error.code || 'gateway_error' })
@@ -63,8 +64,10 @@ export async function createGateway(config, dependencies = {}) {
         if (route === '/api/login' && req.method === 'POST') { json(res, auth.login(req, await bodyOf(req), res)); return }
         if (!auth.console(req)) throw fault('Console login required', 401)
         if (route === '/api/logout' && req.method === 'POST') { json(res, auth.logout(req, res)); return }
+        if (route === '/api/analytics' && req.method === 'POST') { json(res, analytics(history, await bodyOf(req))); return }
+        if (route === '/api/models' && req.method === 'GET') { json(res, account.models()); return }
         if (route === '/api/status' && req.method === 'GET') {
-          json(res, { account: await account.status(), login: account.loginState, busy: sessions.busy, sessions: sessions.status(), requests: history.recent(), totals: history.totals, settings: { model: config.model, sessionTtlMs: config.sessionTtlMs, maxSessions: config.maxSessions } }); return
+          json(res, { account: await account.status(), login: account.loginState, busy: sessions.busy, sessions: sessions.status(), requests: history.recent(), totals: history.totals, settings: { model: config.model, sessionTtlMs: config.sessionTtlMs, maxSessions: config.maxSessions, turnTimeoutMs: config.turnTimeoutMs, historyLimit: config.historyLimit } }); return
         }
         if (route === '/api/settings' && req.method === 'POST') { try { saveSettings(config, await bodyOf(req)) } catch (e) { throw fault(e.message) }; json(res, { ok: true }); return }
         if (route === '/api/account/login' && req.method === 'POST') {
@@ -74,6 +77,7 @@ export async function createGateway(config, dependencies = {}) {
           json(res, account.login((await bodyOf(req)).mode)); return
         }
         if (route === '/api/account/callback' && req.method === 'POST') { json(res, await account.callback((await bodyOf(req)).url)); return }
+        if (route === '/api/account/cancel' && req.method === 'POST') { account.cancel(); json(res, { ok: true }); return }
         if (route.startsWith('/api/sessions/') && req.method === 'DELETE') {
           const session = sessions.sessions.get(route.slice('/api/sessions/'.length))
           if (!session) throw fault('Session not found', 404)

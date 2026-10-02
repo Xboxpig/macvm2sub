@@ -1,46 +1,61 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { Component, Suspense, lazy, useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Button } from './vendor/cpamp/ui/Button'
-import { Card } from './vendor/cpamp/ui/Card'
-import { Input } from './vendor/cpamp/ui/Input'
-import { LoadingSpinner } from './vendor/cpamp/ui/LoadingSpinner'
+import { HashRouter, NavLink, useLocation } from 'react-router-dom'
+import { Button } from './vendor/cpamp/components/ui/Button'
+import { Card } from './vendor/cpamp/components/ui/Card'
+import { Input } from './vendor/cpamp/components/ui/Input'
+import { LoadingSpinner } from './vendor/cpamp/components/ui/LoadingSpinner'
+import { ConsoleContext } from './vendor/cpamp/stores'
+import { IconSettings, IconTrendingUp, IconFileText, IconKey } from './vendor/cpamp/components/ui/icons'
+import { OAuthPage } from './pages/OAuthPage'
+import { RequestsPage } from './pages/RequestsPage'
+import { api, type Status } from './api'
+import './vendor/cpamp/i18n'
 import './style.scss'
 
-type Session = { id: string; model: string; state: string; touched: number; pendingTools: number }
-type Request = { id: string; time: number; model: string; status: number; durationMs: number; inputTokens: number; outputTokens: number; error?: string }
-type Status = { account: { loggedIn: boolean; loginMethod?: string }; busy: boolean; sessions: Session[]; requests: Request[]; totals: { requests: number; inputTokens: number; outputTokens: number }; settings: { model: string; sessionTtlMs: number; maxSessions: number }; login?: { running: boolean; url?: string; code?: string; message?: string } }
-async function api<T = unknown>(path: string, body?: unknown, method = body === undefined ? 'GET' : 'POST'): Promise<T> {
-  const response = await fetch(`/api/${path}`, { method, credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) })
-  const data = await response.json()
-  if (!response.ok) throw Object.assign(new Error(data.error?.message || '请求失败'), { status: response.status })
-  return data
-}
-const pages = ['概览', '请求记录', 'Codex 账号', '设置']
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const UsageAnalyticsPage = lazy(() => import('./vendor/cpamp/features/usage-analytics/UsageAnalyticsPage').then(m => ({ default: m.UsageAnalyticsPage })))
+const pages = [{ path: '/', title: '概览', icon: IconTrendingUp }, { path: '/usage', title: '使用统计', icon: IconTrendingUp }, { path: '/monitoring', title: '请求记录', icon: IconFileText }, { path: '/oauth', title: 'OAuth 登录', icon: IconKey }, { path: '/settings', title: '配置管理', icon: IconSettings }]
 const stateName: Record<string, string> = { starting: '启动中', idle: '等待输入', running: '推理中', waiting_tools: '等待客户端工具', suspended: '可恢复', closed: '已关闭' }
 const number = (n: number) => new Intl.NumberFormat('zh-CN').format(n)
+class PageBoundary extends Component<{children: ReactNode}, {error: string}> {
+  state = { error: '' }
+  static getDerivedStateFromError(error: Error) { return { error: error.message } }
+  render() { return this.state.error ? <div role="alert" className="error-box">页面加载失败：{this.state.error}<Button variant="secondary" onClick={() => location.reload()}>重新加载</Button></div> : this.props.children }
+}
 function App() {
-  const [status, setStatus] = useState<Status>(), [authed, setAuthed] = useState<boolean>(), [page, setPage] = useState('概览')
-  const [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false)
-  const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [model, setModel] = useState(''), [callback, setCallback] = useState('')
-  const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark')
+  const route = useLocation(), page = pages.find(p => p.path === route.pathname) || pages[0]
+  const [status, setStatus] = useState<Status>(), [authed, setAuthed] = useState<boolean>(), [error, setError] = useState(''), [notice, setNotice] = useState(''), [busy, setBusy] = useState(false)
+  const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark')
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; localStorage.setItem('theme', dark ? 'dark' : 'light') }, [dark])
-  async function refresh() {
-    try { const data = await api<Status>('status'); setStatus(data); setAuthed(true); setModel(old => old || data.settings.model) }
-    catch (e) { if ((e as {status?: number}).status === 401) setAuthed(false); else setError((e as Error).message) }
-  }
-  useEffect(() => { void refresh(); const timer = setInterval(() => void refresh(), 5000); return () => clearInterval(timer) }, [])
+  const refresh = useCallback(async () => {
+    try { const data = await api<Status>('status'); setStatus(data); setAuthed(true) }
+    catch (e) { if ((e as {status?: number}).status === 401) { setAuthed(false); setStatus(undefined) } else setError((e as Error).message) }
+  }, [])
+  useEffect(() => { void refresh(); const timer = setInterval(() => void refresh(), 3000); return () => clearInterval(timer) }, [refresh])
+  useEffect(() => { setNotice(''); setError('') }, [route.pathname])
+  const notify = useCallback((message: string, kind?: string) => { if (kind === 'error') setError(message); else setNotice(message) }, [])
   async function action(fn: () => Promise<unknown>, message = '') {
     setBusy(true); setError(''); setNotice('')
     try { await fn(); if (message) setNotice(message); await refresh() } catch (e) { setError((e as Error).message) } finally { setBusy(false) }
   }
   const login = (e: FormEvent) => { e.preventDefault(); void action(async () => { await api('login', { username, password }); setPassword('') }) }
   if (authed === undefined) return <div className="loading"><LoadingSpinner size={28}/><span>连接 macvm2sub…</span>{error && <p role="alert">{error}</p>}</div>
-  if (!authed) return <main className="login-wrap"><Card className="login-card"><div className="brand-mark">m</div><h1>macvm2sub</h1><p className="muted">登录你的 Codex API 控制台</p><form onSubmit={login}><Input label="用户名" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required/><Input label="密码" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required/>{error && <p className="error-box" role="alert">{error}</p>}<Button type="submit" fullWidth loading={busy}>登录</Button></form><small>界面组件源自 CPA-Manager-Plus</small></Card></main>
-  return <div className="shell"><aside><a href="/console/" className="brand"><span className="brand-mark">m</span><span>macvm2sub<small>Codex API Console</small></span></a><nav aria-label="主导航">{pages.map((p, i) => <button key={p} className={page === p ? 'active' : ''} aria-current={page === p ? 'page' : undefined} onClick={() => { setPage(p); setNotice(''); setError('') }}><span className="nav-number">0{i + 1}</span>{p}</button>)}</nav><div className="sidebar-footer"><span className="dot"/> 单账号 · macOS x64<a href="https://github.com/seakee/CPA-Manager-Plus" target="_blank" rel="noreferrer">UI based on CPA-Manager-Plus ↗</a></div></aside><div className="workspace"><header><span>{page}</span><div><Button variant="ghost" size="sm" onClick={() => setDark(!dark)}>{dark ? '浅色' : '深色'}</Button><Button variant="ghost" size="sm" onClick={() => void action(async () => { await api('logout', {}); setAuthed(false) })}>退出</Button></div></header><main><div className="page-heading"><div><p className="eyebrow">CODEX WORKSPACE</p><h1>{page}</h1><p className="muted">{page === '概览' ? '查看 API 状态、用量和会话。' : page === '请求记录' ? '最近的请求状态与 token 用量。' : page === 'Codex 账号' ? '管理官方 Codex 登录状态。' : '配置新会话使用的默认模型。'}</p></div><span className={`status-pill ${status?.busy ? 'working' : ''}`}><span className="dot"/>{status?.busy ? '正在推理' : '服务就绪'}</span></div>{error && <div className="error-box" role="alert">{error}</div>}{notice && <div className="notice" role="status">{notice}</div>}
-  {status && page === '概览' && <><div className="stats">{[['累计请求', status.totals.requests], ['输入 tokens', status.totals.inputTokens], ['输出 tokens', status.totals.outputTokens], ['活跃会话', status.sessions.filter(s => s.state !== 'closed').length]].map(([label, value]) => <Card key={label}><span className="muted">{label}</span><strong>{number(Number(value))}</strong></Card>)}</div><Card title="连接信息"><dl><dt>API 地址</dt><dd><code>{location.origin}/v1</code></dd><dt>默认模型</dt><dd>{status.settings.model}</dd><dt>Codex 账号</dt><dd>{status.account.loggedIn ? '已登录' : '尚未登录'}</dd></dl></Card><Card title="会话" extra={<span className="muted">自动保留 {Math.round(status.settings.sessionTtlMs / 60000)} 分钟</span>}>{status.sessions.length ? <div className="table-scroll"><table><thead><tr><th>会话</th><th>模型</th><th>状态</th><th>最近活动</th><th/></tr></thead><tbody>{status.sessions.map(s => <tr key={s.id}><td><code>{s.id.slice(0, 8)}</code></td><td>{s.model}</td><td>{stateName[s.state] || s.state}</td><td>{new Date(s.touched).toLocaleTimeString()}</td><td><Button size="xs" variant="ghost" disabled={busy || s.state === 'closed'} onClick={() => void action(() => api(`sessions/${s.id}`, {}, 'DELETE'), '会话已关闭')}>关闭</Button></td></tr>)}</tbody></table></div> : <div className="empty">首次 API 请求会创建会话。</div>}</Card></>}
-  {status && page === '请求记录' && <Card title="最近请求" extra={<span className="muted">不记录 prompt 或工具内容</span>}>{status.requests.length ? <div className="table-scroll"><table><thead><tr><th>时间</th><th>模型</th><th>状态</th><th>耗时</th><th>输入 / 输出</th></tr></thead><tbody>{status.requests.map(r => <tr key={r.id}><td>{new Date(r.time).toLocaleString()}</td><td>{r.model}</td><td title={r.error}><span className={r.status >= 400 ? 'failed' : 'success'}>{r.status}</span></td><td>{(r.durationMs / 1000).toFixed(1)}s</td><td>{number(r.inputTokens)} / {number(r.outputTokens)}</td></tr>)}</tbody></table></div> : <div className="empty">暂无请求记录。</div>}</Card>}
-  {status && page === 'Codex 账号' && <><Card title="官方 Codex 账号"><div className="account-status"><span className="brand-mark">C</span><div><h2>{status.account.loggedIn ? '已登录' : '尚未登录'}</h2><p className="muted">{status.account.loginMethod || '使用官方 Codex CLI 完成登录'}</p></div></div><div className="actions"><Button loading={busy} disabled={status.login?.running} onClick={() => void action(() => api('account/login', { mode: 'browser' }))}>浏览器 OAuth 登录</Button><Button variant="secondary" disabled={busy || status.login?.running} onClick={() => void action(() => api('account/login', { mode: 'device' }))}>设备验证码登录</Button></div>{status.login?.running && <div className="login-info"><p>在浏览器中完成官方验证：</p>{status.login.url && <a href={status.login.url} target="_blank" rel="noreferrer">打开登录页面 ↗</a>}{status.login.code && <code className="device-code">{status.login.code}</code>}<p className="muted">{status.login.message}</p></div>}</Card><Card title="远程浏览器回调"><p className="muted">如果浏览器跳转到 localhost:1455 后无法连接，将地址栏中的完整回调 URL 粘贴到这里。</p><form onSubmit={e => { e.preventDefault(); void action(async () => { await api('account/callback', { url: callback }); setCallback('') }, '回调已提交') }}><Input label="回调 URL" type="url" value={callback} onChange={e => setCallback(e.target.value)} placeholder="http://localhost:1455/auth/callback?…" required/><Button type="submit" disabled={!status.login?.running} loading={busy}>完成登录</Button></form></Card></>}
-  {status && page === '设置' && <Card title="模型与 API"><form onSubmit={e => { e.preventDefault(); void action(() => api('settings', { model }), '默认模型已保存，新会话生效') }}><Input label="默认模型" value={model} onChange={e => setModel(e.target.value)} required hint="已有会话继续使用创建时的模型。"/><Button type="submit" loading={busy}>保存设置</Button></form><div className="settings-note"><h2>客户端连接</h2><p>Base URL：<code>{location.origin}/v1</code></p><p>使用部署时配置的 API key。HTTP SSE 与 WebSocket 使用同一地址。</p></div></Card>}
-  </main><footer>macvm2sub · Derived from vm2api · Frontend components from CPA-Manager-Plus</footer></div></div>
+  if (!authed) return <main className="login-wrap"><Card className="login-card"><div className="brand-mark">m</div><h1>macvm2sub</h1><p className="muted">登录你的 Codex API 控制台</p><form onSubmit={login}><Input label="用户名" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required/><Input label="密码" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required/>{error && <p className="error-box" role="alert">{error}</p>}<Button type="submit" fullWidth loading={busy}>登录</Button></form><small>UI based on CPA-Manager-Plus</small></Card></main>
+  return <ConsoleContext.Provider value={{ resolvedTheme: dark ? 'dark' : 'light', showNotification: notify }}><div className="shell"><aside className="app-sidebar">
+    <a href="/console/" className="brand"><span className="brand-mark">m</span><span>macvm2sub<small>Codex API Console</small></span></a>
+    <nav className="app-nav" aria-label="主导航">{pages.map(p => <NavLink key={p.path} to={p.path} end={p.path === '/'}><p.icon size={18}/>{p.title}</NavLink>)}</nav>
+    <div className="sidebar-footer"><span className="dot"/> 单账号 · macOS x64<a href="https://github.com/seakee/CPA-Manager-Plus" target="_blank" rel="noreferrer">UI based on CPA-Manager-Plus ↗</a></div>
+  </aside><div className="workspace"><header className="app-header"><span>{page.title}</span><div><Button variant="ghost" size="sm" onClick={() => setDark(!dark)}>{dark ? '浅色' : '深色'}</Button><Button variant="ghost" size="sm" onClick={() => void action(async () => { await api('logout', {}); setAuthed(false) })}>退出</Button></div></header>
+    <main><div className="page-heading"><div><h1>{page.title}</h1><p className="muted">{page.path === '/usage' ? '请求、Token 用量、模型和凭证分析。' : page.path === '/settings' ? '管理 Codex 模型、会话与统计配置。' : page.path === '/oauth' ? '管理官方 Codex 授权与登录状态。' : page.path === '/monitoring' ? '查看保留的请求记录，不保存 prompt 或工具内容。' : '查看 API 状态、用量和会话。'}</p></div><span className={`status-pill ${status?.busy ? 'working' : ''}`}><span className="dot"/>{status?.busy ? '正在推理' : '服务就绪'}</span></div>
+    {error && <div className="error-box" role="alert">{error}</div>}{notice && <div className="notice" role="status">{notice}</div>}
+    <PageBoundary key={route.pathname}><Suspense fallback={<div className="page-loading"><LoadingSpinner size={24}/> 加载面板…</div>}>
+    {status && page.path === '/' && <><div className="stats">{[['累计请求', status.totals.requests], ['输入 tokens', status.totals.inputTokens], ['输出 tokens', status.totals.outputTokens], ['活跃会话', status.sessions.filter(s => s.state !== 'closed').length]].map(([label, value]) => <Card key={label}><span className="muted">{label}</span><strong>{number(Number(value))}</strong></Card>)}</div><Card title="连接信息"><dl><dt>API 地址</dt><dd><code>{location.origin}/v1</code></dd><dt>默认模型</dt><dd>{status.settings.model}</dd><dt>Codex 账号</dt><dd>{status.account.loggedIn ? '已登录' : '尚未登录'}</dd></dl></Card><Card title="会话" extra={<span className="muted">自动保留 {Math.round(status.settings.sessionTtlMs / 60000)} 分钟</span>}>{status.sessions.length ? <div className="table-scroll"><table><thead><tr><th>会话</th><th>模型</th><th>状态</th><th>最近活动</th><th/></tr></thead><tbody>{status.sessions.map(s => <tr key={s.id}><td><code>{s.id.slice(0, 8)}</code></td><td>{s.model}</td><td>{stateName[s.state] || s.state}</td><td>{new Date(s.touched).toLocaleTimeString()}</td><td><Button size="xs" variant="ghost" disabled={busy || s.state === 'closed'} onClick={() => void action(() => api(`sessions/${s.id}`, {}, 'DELETE'), '会话已关闭')}>关闭</Button></td></tr>)}</tbody></table></div> : <div className="empty">首次 API 请求会创建会话。</div>}</Card></>}
+    {status && page.path === '/monitoring' && <RequestsPage key={route.search} search={route.search}/>}
+    {status && page.path === '/usage' && <div className="cpamp-page"><div className="analytics-note">统计基于保留的请求记录；订阅费用未计价，费用字段不代表账单。</div><UsageAnalyticsPage/></div>}
+    {status && page.path === '/oauth' && <OAuthPage status={status} refresh={refresh} notify={notify}/>}
+    {status && page.path === '/settings' && <SettingsPage settings={status.settings} refresh={refresh} notify={notify} dark={dark}/>}
+    </Suspense></PageBoundary></main><footer className="app-footer">macvm2sub · Derived from vm2api · Frontend from CPA-Manager-Plus</footer>
+  </div></div></ConsoleContext.Provider>
 }
-createRoot(document.getElementById('root')!).render(<App/> )
+createRoot(document.getElementById('root')!).render(<HashRouter><App/></HashRouter>)
