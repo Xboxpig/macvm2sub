@@ -21,7 +21,7 @@ jobs:
       - run: npm install --global @openai/codex@0.160.0
       - run: npx biome format
       - name: Codex protocol and native adapter tests
-        run: node --test test/unit/codex-*.test.mjs test/unit/handle-codex.test.mjs
+        run: node --test test/unit/codex-*.test.mjs test/unit/handle-codex.test.mjs test/unit/responses-websocket.test.mjs
         env:
           KIN_CODEX_BACKEND: kernel
       - name: Real official CLI and loopback provider

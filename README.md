@@ -44,7 +44,7 @@ npm run login:codex -- --device-auth
 
 当前原生适配覆盖 Codex 路径。Claude 槽位和 Linux 容器运行时仍使用上游部署方式。
 
-CLI backend 每次请求使用完整会话历史，暂不支持 `previous_response_id`、Responses WebSocket 和 `/v1/responses/compact`。管理台原有 OAuth 导入入口尚未接入 CLI 登录，请使用 `npm run login:codex`。官方 CLI 会进行自身的指令和上下文处理。
+支持 Responses HTTP/SSE 和 WebSocket。WebSocket 支持预热、同一连接内的 `previous_response_id` 增量续接及客户端工具结果回传；网关恢复完整历史后交给官方 CLI。连接断开后需重发完整历史，暂不支持 `/v1/responses/compact`。管理台原有 OAuth 导入入口尚未接入 CLI 登录，请使用 `npm run login:codex`。官方 CLI 会进行自身的指令和上下文处理。
 
 ## 验证
 

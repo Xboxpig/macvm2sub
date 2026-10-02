@@ -73,7 +73,7 @@ base_url = "http://127.0.0.1:8787/v1"
 wire_api = "responses"
 env_key = "VM2API_API_KEY"
 requires_openai_auth = false
-supports_websockets = false
+supports_websockets = true
 ```
 
 Export the generated `VM2API_API_KEY` in the client shell. Keep this client
@@ -95,10 +95,18 @@ routing the upstream CLI back into vm2api.
 - Authentication and refresh belong to the official CLI. Usage is included when
   app-server reports it. CLI instructions and context processing remain active;
   this is not a byte-for-byte proxy of the caller's upstream request.
-- `previous_response_id`, non-auto `tool_choice`, unsupported input/tool types,
-  Responses WebSocket transport and `/v1/responses/compact` are not implemented.
-  Send full history over HTTP/SSE. Long-context Codex workflows that require
-  server-side compaction need further work.
+- `/v1/responses` supports authenticated WebSocket connections, `response.create`,
+  `generate: false` warmups, and incremental input through `previous_response_id`.
+  Response events are JSON text frames. Inference uses the same authentication,
+  scheduling, usage logging and official CLI backend as HTTP/SSE.
+- WebSocket history lives only on that connection (up to 8 responses and 32 MiB).
+  After reconnecting or cache eviction, resend full history without a previous ID;
+  missing IDs return `previous_response_not_found`. Requests on a connection are
+  processed sequentially, including named streams; mid-turn steering is not implemented.
+  Closing the connection cancels the active request and discards its queued turns.
+- HTTP/SSE still requires full history. Non-auto `tool_choice`, unsupported
+  input/tool types and `/v1/responses/compact` are not implemented. Long-context
+  workflows that require server-side compaction need further work.
 
 macOS defaults to `KIN_CODEX_BACKEND=cli`. Linux retains the bundled kernel
 default; setting `KIN_CODEX_BACKEND=cli` opts into this adapter there as well.

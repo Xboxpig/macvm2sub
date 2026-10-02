@@ -8,6 +8,7 @@
  * ~/.claude.json and complete a plan turn.
  */
 import http from 'node:http'
+import { createResponsesWebSocket } from './lib/transport/responses-websocket.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 import { loadConfig, reloadActiveVm, routingConfigFile } from './lib/core/config.mjs'
@@ -1033,7 +1034,18 @@ const server = http.createServer(async (req, res) => {
   }
 })
 
+const responsesWebSocket = createResponsesWebSocket({
+  requireAuth,
+  isRestoring: () => backupService.isRestoring,
+  maxPayload: Math.min(cfg.limits.max_body_bytes, 32 * 1024 * 1024),
+  getTarget: () => {
+    const address = server.address()
+    const host = address.address === '0.0.0.0' ? '127.0.0.1' : address.address === '::' ? '::1' : address.address
+    return `http://${host.includes(':') ? `[${host}]` : host}:${address.port}/v1/responses`
+  },
+})
 server.on('upgrade', (req, socket, head) => {
+  if (responsesWebSocket.handleUpgrade(req, socket, head)) return
   if (clusterRoutes.handleUpgrade(req, socket, head)) return
   if (!slotShell.handleUpgrade(req, socket, head)) socket.destroy()
 })
@@ -1123,6 +1135,7 @@ function shutdown(signal) {
     clusterManager.stop()
   } catch {}
   try {
+    responsesWebSocket.close()
     server.close(() => {})
   } catch {}
   try {

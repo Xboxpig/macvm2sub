@@ -219,7 +219,7 @@ test('official Codex app-server: text, external tool call and tool output', {
   fs.mkdirSync(clientHome)
   fs.writeFileSync(
     path.join(clientHome, 'config.toml'),
-    `model_provider = "vm2api"\nmodel = "gpt-5.4"\n[model_providers.vm2api]\nname = "vm2api"\nbase_url = "${gateway.baseUrl}/v1"\nwire_api = "responses"\nenv_key = "VM2API_FIXTURE_KEY"\nsupports_websockets = false\n`,
+    `model_provider = "vm2api"\nmodel = "gpt-5.4"\n[model_providers.vm2api]\nname = "vm2api"\nbase_url = "${gateway.baseUrl}/v1"\nwire_api = "responses"\nenv_key = "VM2API_FIXTURE_KEY"\nsupports_websockets = true\n`,
   )
   clientToolMode = true
   const client = spawn(
@@ -246,6 +246,7 @@ test('official Codex app-server: text, external tool call and tool output', {
   })
   clearTimeout(timeout)
   assert.equal(code, 0, stdout + stderr)
+  assert.doesNotMatch(stderr, /failed to connect to websocket|falling back|426 Upgrade Required/i)
   assert.match(stdout, /macOS CLI OK/)
   assert.ok(
     JSON.stringify(requests.at(-1).input).includes('VM2API_TOOL_OK'),
