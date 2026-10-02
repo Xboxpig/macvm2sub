@@ -1,36 +1,21 @@
 {
   "name": "macvm2sub",
   "private": true,
-  "description": "Native macOS subscription-to-API gateway using the official Codex CLI, derived from vm2api",
+  "version": "0.2.0",
+  "description": "Single-account macOS API gateway driven by the official Codex TUI",
   "type": "module",
-  "main": "src/server.mjs",
+  "engines": { "node": ">=24" },
   "scripts": {
     "setup:macos": "node scripts/macos.mjs init",
     "login:codex": "node scripts/macos.mjs login",
     "status:codex": "node scripts/macos.mjs status",
     "start:macos": "node scripts/macos.mjs start",
-    "start": "node src/server.mjs",
-    "test": "npm run test:unit && npm run test:go",
-    "test:unit": "node scripts/run-isolated-tests.mjs test/unit .test.mjs",
-    "test:e2e": "node scripts/run-isolated-tests.mjs test/e2e .e2e.test.mjs",
-    "test:node": "npm run test:unit",
-    "test:go": "cd worker && go test -race ./...",
-    "test:all": "npm run test:unit && npm run test:go",
-    "build:worker": "mkdir -p bin && cd worker && CGO_ENABLED=0 go build -trimpath -o ../bin/kin-worker ./cmd/kin-worker",
-    "build:egress": "mkdir -p bin && cd worker && CGO_ENABLED=0 go build -trimpath -o ../bin/kin-egress ./cmd/kin-egress",
-    "build:web": "pnpm -C web build",
-    "test:web": "pnpm -C web test",
-    "format": "biome format --write && gofmt -w worker && pnpm -C web format",
-    "format:check": "biome format && node scripts/check-gofmt.mjs && pnpm -C web format:check"
+    "start": "node --env-file-if-exists=.env.macos src/server.mjs",
+    "test": "node --test test/tui/*.test.mjs test/server.test.mjs",
+    "test:native": "node scripts/test-native.mjs",
+    "build:web": "npm --prefix console run build"
   },
   "dependencies": {
-    "https-proxy-agent": "^9.1.0",
-    "node-fetch": "^2.7.0",
-    "socks-proxy-agent": "^10.1.0",
-    "ssh2": "^1.17.0",
     "ws": "^8.22.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "2.5.11"
   }
 }

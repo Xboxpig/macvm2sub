@@ -1,64 +1,61 @@
 # macvm2sub
 
-面向 macOS x64 的订阅转 API 服务，优先支持官方 Codex CLI。
+在 macOS x64 上运行的单账号 Codex API gateway，独立维护并继承 [vm2api](https://github.com/dofastted/vm2api)。
 
-项目由 [Xboxpig](https://github.com/Xboxpig) 独立维护，继承自 [dofastted/vm2api](https://github.com/dofastted/vm2api)。保留上游 Git 提交历史、版权声明与 [原始许可证](LICENSE)；来源和适配范围见 [UPSTREAM.md](UPSTREAM.md)。
+网关启动官方 Codex TUI，用 PTY 提交 prompt，在本机代理中同步转发并读取原生 HTTP/WS 响应。一个客户端会话对应一个持久 TUI；默认同时进行一次推理。控制台使用 CPA-Manager-Plus 的 React 组件和主题，提供概览、请求记录、Codex 登录和模型设置。
 
-## 当前能力
+## 启动
 
-- macOS 原生 Node.js 控制面，内部通过官方 `codex app-server` 执行推理。
-- `POST /v1/responses`，支持普通响应和 SSE 流式输出。
-- 每个槽位使用独立的 `CODEX_HOME`，支持浏览器 OAuth 回调与 device code 登录。
-- 支持客户端工具调用、工具结果回传和完整会话历史。
-- 管理控制台、账号调度与存储沿用上游实现。
-
-已在 Intel macOS 15.7.8、Node.js 24.21.0、Codex CLI 0.160.0 上验证。登录后已实测 `gpt-6-sol` 的普通和流式请求；具体模型可用性以账号为准。
-
-## 快速开始
-
-安装 Node.js 24+ 和官方 Codex CLI，然后：
+验证环境：macOS 15.7 x64、Node.js 24、Python 3、官方 Codex CLI 0.160.0。
 
 ```sh
-git clone https://github.com/Xboxpig/macvm2sub.git
-cd macvm2sub
-npm ci --ignore-scripts
+npm ci
+npm --prefix console ci
+npm run build:web
 npm run setup:macos
 npm run login:codex
 npm run start:macos
 ```
 
-`login:codex` 默认使用浏览器 OAuth 登录。需要 device code 登录时执行：
+初始化把随机 API key 和控制台密码写入权限为 `0600` 的 `.env.macos`。控制台：`http://127.0.0.1:8787/console/`。部署前按需修改 `HOST`；环境变量见 [.env.example](.env.example)。已有部署的 `VM2API_API_KEY`、`VM2API_ADMIN_USER`、`VM2API_ADMIN_PASSWORD` 和 `KIN_CODEX_CLI_BIN` 可继续使用。
+
+`MACVM2SUB_CODEX_HOME` 可指向已经 OAuth 登录的 Codex home。认证和 token 刷新由官方 CLI 完成。控制台支持发起浏览器 OAuth、设备验证码登录，以及提交远程浏览器无法访问的 `localhost:1455/auth/callback` URL。
+
+## API 与会话
+
+- `POST /v1/responses`：JSON 或 SSE。
+- `GET /v1/responses` 的 WebSocket Upgrade：`response.create`、`generate:false` warmup 和连续响应。
+- `GET /v1/models`：官方 CLI 缓存的模型目录；尚未生成目录时返回配置的默认模型。
+- API 请求使用 `Authorization: Bearer <API key>`；控制台使用独立的登录 cookie。
+
+后续请求优先带 `previous_response_id`。网关把它关联到原 TUI；连续 HTTP 和 WS 请求可以共用该 ID。完整历史在内存中精确匹配时也可续接。旧 ID 分叉、过期会话、模型或工具定义变更会返回明确错误。空闲会话默认保留 15 分钟，最多 4 个；一次推理期间的其他请求返回 `429 gateway_busy`。
+
+工具由真实 API 客户端执行。网关自带的 stdio MCP 工具桥在本机等待结果，无需安装或连接外部 MCP 服务。客户端收到 `function_call` / `custom_tool_call` 后，在下一次请求中回传相同 `call_id` 的 output；结果进入原 TUI 的工具记录。并行工具调用需要一次返回全部结果。
+
+当前输入支持文本；支持 function、namespace 和以字符串包装的 custom 工具。初始历史和 instructions 作为 TUI 用户 prompt 提交，不提供独立于 Codex 原生指令的 system-role 替换。初次启动/恢复的 prompt 上限为 96 KiB。暂不提供 Chat Completions、图片输入、background Responses 或任意响应分叉；custom 工具的 grammar 不由网关校验。
+
+## 原生轮次与恢复
+
+轮次控制改编自 MIT 项目 [Jinn](https://github.com/hristo2612/jinn)：读取原生 transcript，要求本轮 `task_started` 与 `task_complete` 匹配。首轮 prompt 随 TUI 启动，后续使用 bracketed paste。API 工具调用边界会先返回给客户端，TUI 继续等待工具结果；最终文本完成后再等待原生轮次结束。
+
+已完成的空闲会话保存原生 session ID，服务重启后通过 `codex resume` 恢复；TTL 内可继续使用最后的 `previous_response_id`。推理中或等待工具结果的会话不会在重启后自动重放。网关请求日志只保存状态、耗时和用量；Codex 自己会在其 home 下保存原生 transcript。
+
+## 验证与服务
 
 ```sh
-npm run login:codex -- --device-auth
+npm test
+npm run test:native     # macOS 上的真实 TUI + 本地 fixture，不调用付费上游
+npm run build:web
+node scripts/launchd.mjs # 生成开机服务配置并打印安装命令
 ```
 
-- API：`http://127.0.0.1:8787/v1`
-- 控制台：`http://127.0.0.1:8787/console`
-- 健康检查：`http://127.0.0.1:8787/health`
-- API key、管理员密码及数据库密钥：初始化生成在 `.env.macos`。
-
-远程浏览器回调、Codex CLI 客户端配置和代理设置见 [macOS 部署说明](docs/MACOS.md)。
-
-## 适配范围
-
-当前原生适配覆盖 Codex 路径。Claude 槽位和 Linux 容器运行时仍使用上游部署方式。
-
-支持 Responses HTTP/SSE 和 WebSocket。WebSocket 支持预热、同一连接内的 `previous_response_id` 增量续接及客户端工具结果回传；网关恢复完整历史后交给官方 CLI。连接断开后需重发完整历史，暂不支持 `/v1/responses/compact`。管理台原有 OAuth 导入入口尚未接入 CLI 登录，请使用 `npm run login:codex`。官方 CLI 会进行自身的指令和上下文处理。
-
-## 验证
+真实 API 客户端验收（会调用配置模型）：
 
 ```sh
-node --test test/unit/codex-cli.test.mjs
-VM2API_TEST_CODEX_CLI=1 node --test test/e2e/codex-cli-native.e2e.test.mjs
+MACVM2SUB_TEST_API_KEY=... MACVM2SUB_TEST_MODEL=gpt-5.6-luna \
+  node scripts/verify-client.mjs https://your-host:3038
 ```
 
-集成测试使用真实官方 CLI 和本地 fixture provider，覆盖流式响应、工具调用、结果回传以及 Codex CLI 客户端经由服务完成工具循环。
+脚本使用独立 `CODEX_HOME`、临时工作目录和 `workspace-write` sandbox 启动官方 Codex 客户端，要求通过 `apply_patch` 创建示例代码，再用 shell 运行 3 项 unittest。脚本还会独立重跑测试并输出 JSON 报告；工作目录保留以供检查。
 
-## 来源与许可
-
-- 上游：[dofastted/vm2api](https://github.com/dofastted/vm2api)
-- 来源说明：[UPSTREAM.md](UPSTREAM.md)
-- 许可证：[LICENSE](LICENSE)
-
-个人学习、研究与非商用自建遵循上游许可证；商用须先取得版权所有者的书面授权。独立维护不会改变原始代码的许可条款。
+运行架构和来源说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) 与 [UPSTREAM.md](UPSTREAM.md)。原 vm2api 的 [非商用许可证](LICENSE) 保留；CPAMP 和 Jinn 代码分别保留各自 MIT 声明。

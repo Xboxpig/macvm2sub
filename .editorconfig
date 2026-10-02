@@ -8,12 +8,8 @@ indent_style = space
 indent_size = 2
 trim_trailing_whitespace = true
 
-[*.go]
-indent_style = tab
+[*.py]
+indent_size = 4
 
 [*.md]
 trim_trailing_whitespace = false
-
-[*.{rs,toml}]
-indent_style = space
-indent_size = 4

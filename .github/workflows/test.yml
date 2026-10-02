@@ -1,86 +1,18 @@
-# Required PR/main gate: unit + egress/telemetry Go + prebuilt kernel ELFs + web.
-name: ci
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
-permissions:
-  contents: read
-
+name: Test
+on: [push, pull_request]
 jobs:
-  unit:
+  gateway-and-console:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            console/package-lock.json
       - run: npm ci
-      - name: format-check
-        run: npx biome format
-      - name: syntax-check hot path
-        run: |
-          node --check src/server.mjs
-          find src -name '*.mjs' -print0 | xargs -0 -n1 node --check
-      - run: npm run test:unit
-
-  worker:
-    runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25.x'
-      - name: gofmt
-        run: test -z "$(gofmt -l worker)"
-      - name: go test race
-        working-directory: worker
-        run: go test -race ./...
-      - name: go vet
-        working-directory: worker
-        run: go vet ./...
-      - name: build kin-egress
-        run: mkdir -p bin && cd worker && CGO_ENABLED=0 go build -trimpath -o ../bin/kin-egress ./cmd/kin-egress
-
-  kernel:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-      - name: prebuilt kernel ELFs
-        run: |
-          set -e
-          chmod a+x bin/kin-kernel bin/kin-codex-kernel share/wrap-cli/kin-kernel.bin share/wrap-cli/cli-node share/wrap-cli/cc-node share/crag/kin-kernel
-          for b in bin/kin-kernel bin/kin-codex-kernel share/wrap-cli/kin-kernel.bin share/wrap-cli/cli-node share/wrap-cli/cc-node share/crag/kin-kernel; do
-            test -f "$b"
-            file "$b" | grep -q 'ELF 64-bit'
-          done
-
-  web:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: pnpm
-          cache-dependency-path: web/pnpm-lock.yaml
-      - name: install and verify
-        working-directory: web
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm format:check
-          pnpm test
-          pnpm build
+      - run: npm test
+      - run: npm --prefix console ci
+      - run: npm run build:web

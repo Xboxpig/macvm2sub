@@ -1,27 +1,16 @@
 # 来源与继承关系
 
-`macvm2sub` 由 [Xboxpig](https://github.com/Xboxpig) 独立维护，源自
-[dofastted/vm2api](https://github.com/dofastted/vm2api)，并继承其代码与 Git 提交历史。
+`macvm2sub` 由 [Xboxpig](https://github.com/Xboxpig) 独立维护，源自 [dofastted/vm2api](https://github.com/dofastted/vm2api)，继承其代码与 Git 提交历史。
 
-## 继承基线
+- vm2api 继承起点：`fe643cd7e54befd395537ba06d2f25df8c6101fb`
+- 首次 macOS 适配：`6c89796e3bc55a240cef6fb404bf730f7f4047d7`
+- 独立维护开始：2026-10-02
+- 精简前的 Responses WebSocket 检查点：`acf1bb8`
 
-- 上游项目：`dofastted/vm2api`
-- 适配起点：[`fe643cd7e54befd395537ba06d2f25df8c6101fb`](https://github.com/dofastted/vm2api/commit/fe643cd7e54befd395537ba06d2f25df8c6101fb)
-- 首次 macOS/Codex 适配提交：`6c89796e3bc55a240cef6fb404bf730f7f4047d7`
-- 独立维护开始日期：2026-10-02
+当前分支改为单账号、持久官方 Codex TUI 与 HTTP/WS 代理；精简前的实现可从 Git 历史恢复。
 
-## 本项目的改动
+前端组件与主题引入自 [CPA-Manager-Plus](https://github.com/seakee/CPA-Manager-Plus)，固定版本 `05ebb7f275dbe575211cb886436d4b99936c1cd9`，改造范围和 MIT 许可见 [前端来源说明](console/src/vendor/cpamp/UPSTREAM.md)。
 
-- 增加 macOS x64 原生启动、初始化与官方 Codex CLI 登录入口。
-- 通过官方 CLI app-server 承担 Codex 推理与认证。
-- 将 Responses 请求、SSE 输出和客户端工具调用接入已有调度流程。
-- 增加 macOS 部署文档、协议单元测试与真实 CLI 集成测试。
+原生 transcript tailer、轮次 marker 解析与生命周期参考来自 [Jinn](https://github.com/hristo2612/jinn)，固定版本 `3ae6465715b6195db057d4c23156b696c71dc179`。模块改编范围和 MIT 许可见 [Jinn 来源说明](src/vendor/jinn/UPSTREAM.md)。
 
-上游贡献者继续拥有其贡献的版权。原始 [LICENSE](LICENSE) 完整保留，
-其非商用条件及商用授权要求仍然适用。仓库独立和名称变更不构成重新授权。
-
-历史文档、环境变量、运行目录、二进制名和 Linux 部署脚本中仍有 `vm2api`
-或 `kin` 标识；这些属于继承实现及其兼容接口。macOS 使用说明以
-[README.md](README.md) 和 [docs/MACOS.md](docs/MACOS.md) 为准。
-
-后续吸收上游改动时，保留原提交作者及来源信息。
+原贡献者继续拥有各自贡献的版权。原始 [LICENSE](LICENSE) 完整保留，其非商用条件及商用授权要求仍然适用。仓库独立和名称变更不构成重新授权；引入 MIT 模块也不改变其他继承代码的许可条件。
